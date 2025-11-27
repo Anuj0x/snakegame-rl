@@ -5,8 +5,8 @@ from collections import deque
 from snake_gameai import SnakeGameAI,Direction,Point,BLOCK_SIZE
 from model import Linear_QNet,QTrainer
 from Helper import plot
-MAX_MEMORY = 100_000
-BATCH_SIZE = 1000
+MAX_MEMORY = 200_000  # Increased memory for better GPU utilization
+BATCH_SIZE = 2000     # Larger batches for GPU efficiency
 LR = 0.001
 
 class Agent:
@@ -15,14 +15,23 @@ class Agent:
         self.epsilon = 0 # Randomness
         self.gamma = 0.9 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.model = Linear_QNet(11,256,3) 
+        self.model = Linear_QNet(11,256,3)
+
+        # Force CUDA usage if available for maximum performance
+        if torch.cuda.is_available():
+            print("🎯 CUDA GPU detected - Training with GPU acceleration!")
+            torch.cuda.empty_cache()  # Clear any cached memory
+            # Pin memory for faster transfers
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.deterministic = False
+        else:
+            print("💻 Using CPU for training")
+
         self.trainer = QTrainer(self.model,lr=LR,gamma=self.gamma)
-        # for n,p in self.model.named_parameters():
-        #     print(p.device,'',n) 
-        # self.model.to('cuda')   
-        # for n,p in self.model.named_parameters():
-        #     print(p.device,'',n)         
-        # TODO: model,trainer
+
+        # Memory optimizations
+        self.device = self.model.device
+        print(f"🚀 Using device: {self.device}")
 
     # state (11 Values)
     #[ danger straight, danger right, danger left,
@@ -99,10 +108,10 @@ class Agent:
             move = random.randint(0,2)
             final_move[move]=1
         else:
-            state0 = torch.tensor(state,dtype=torch.float).cuda()
-            prediction = self.model(state0).cuda() # prediction by model 
+            state0 = torch.tensor(state,dtype=torch.float).to(self.model.device)
+            prediction = self.model(state0) # prediction by model
             move = torch.argmax(prediction).item()
-            final_move[move]=1 
+            final_move[move]=1
         return final_move
 
 def train():
